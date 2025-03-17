@@ -1,0 +1,44 @@
+2025-03-17 13:10:43,012 - __main__ - INFO - Démarrage de l'application...
+2025-03-17 13:17:08,450 - __main__ - INFO - Démarrage de l'application...
+2025-03-17 13:23:23,567 - __main__ - INFO - Starting application...
+2025-03-17 13:23:23,633 - src.memory.memory_manager - INFO - Base de données initialisée avec succès
+2025-03-17 13:23:23,656 - src.data.collector - ERROR - Erreur chargement config: Configuration invalide: search_queries manquant
+2025-03-17 13:23:23,657 - src.data.collector - ERROR - Erreur initialisation composants: HybridNetwork.__init__() got an unexpected keyword argument 'config'
+2025-03-17 13:33:22,285 - src.memory.memory_manager - INFO - Base de données initialisée avec succès
+2025-03-17 13:33:22,287 - __main__ - ERROR - Initialization error: 'HybridNetwork' object has no attribute 'parameters'
+2025-03-17 13:33:22,287 - __main__ - ERROR - Error during initialization: 'HybridNetwork' object has no attribute 'parameters'
+2025-03-17 13:39:09,522 - src.memory.memory_manager - INFO - Base de données initialisée avec succès
+2025-03-17 13:39:13,702 - __main__ - INFO - Application started successfully
+2025-03-17 13:39:13,702 - __main__ - ERROR - Error in main loop: 'CLI' object has no attribute 'run'
+2025-03-17 13:39:13,702 - __main__ - INFO - Normal application shutdown
+2025-03-17 13:39:13,702 - src.learning.continuous_learner - INFO - Démarrage de la boucle d'apprentissage continue
+2025-03-17 13:39:13,702 - src.learning.continuous_learner - ERROR - Erreur dans la boucle d'apprentissage: 'DataCollector' object has no attribute 'collect_continuously'
+2025-03-17 13:39:13,704 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-2' coro=<ContinuousLearner.start_learning_loop() done, defined at /home/safevision/0/src/learning/continuous_learner.py:39> exception=AttributeError("'DataCollector' object has no attribute 'collect_continuously'")>
+Traceback (most recent call last):
+  File "/home/safevision/0/src/learning/continuous_learner.py", line 45, in start_learning_loop
+    new_data = await self.collector.collect_continuously()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'DataCollector' object has no attribute 'collect_continuously'
+2025-03-17 13:41:10,275 - src.memory.memory_manager - INFO - Base de données initialisée avec succès
+2025-03-17 13:41:11,251 - __main__ - INFO - Application started successfully
+2025-03-17 13:41:11,251 - __main__ - ERROR - Error in main loop: 'CLI' object has no attribute 'run'
+2025-03-17 13:41:11,251 - __main__ - INFO - Normal application shutdown
+2025-03-17 13:41:11,251 - src.learning.continuous_learner - INFO - Démarrage de la boucle d'apprentissage continue
+2025-03-17 13:41:11,251 - src.learning.continuous_learner - ERROR - Erreur dans la boucle d'apprentissage: 'DataCollector' object has no attribute 'collect_continuously'
+2025-03-17 13:41:11,253 - asyncio - ERROR - Task exception was never retrieved
+future: <Task finished name='Task-2' coro=<ContinuousLearner.start_learning_loop() done, defined at /home/safevision/0/src/learning/continuous_learner.py:39> exception=AttributeError("'DataCollector' object has no attribute 'collect_continuously'")>
+Traceback (most recent call last):
+  File "/home/safevision/0/src/learning/continuous_learner.py", line 45, in start_learning_loop
+    new_data = await self.collector.collect_continuously()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'DataCollector' object has no attribute 'collect_continuously'
+2025-03-17 13:46:28,682 - src.memory.memory_manager - INFO - Base de données initialisée avec succès
+2025-03-17 13:46:29,671 - __main__ - INFO - Application started successfully
+2025-03-17 13:46:29,671 - __main__ - ERROR - Error in main loop: 'CLI' object has no attribute 'run'
+2025-03-17 13:46:29,671 - __main__ - INFO - Normal application shutdown
+2025-03-17 13:46:29,672 - src.learning.continuous_learner - INFO - Démarrage de la boucle d'apprentissage continue
+2025-03-17 13:46:29,675 - asyncio - ERROR - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7ff53997b710>
+2025-03-17 13:49:29,350 - __main__ - INFO - Starting application...
+2025-03-17 13:49:29,350 - __main__ - INFO - Application started successfully

@@ -1,0 +1,909 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Partie 1 : Imports et utilitaires XRPL
+
+Ce module définit la fonction parse_response et la classe HybridXRPLClient qui
+établit une connexion asynchrone via WebSocket avec fallback HTTP.
+"""
+
+# Imports standard et tiers
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import math
+import time
+import psutil
+import random
+import asyncio
+import threading
+import json
+import logging
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Callable
+
+# IMPORTS EXTERNES
+import networkx as nx         # <-- Correction : Import du module networkx alias nx
+from qiskit import QuantumCircuit, visualization as qiskit_viz
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import websockets
+from xrpl.clients import JsonRpcClient
+from xrpl.wallet import Wallet
+
+# Configuration du logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("HybridXRPLClient")
+
+# XRPL Endpoints
+WEBSOCKET_URLS = [
+    "wss://s1.ripple.com/",
+    "wss://s2.ripple.com/",
+    "wss://xrplcluster.com/"
+]
+
+JSON_RPC_URLS = [
+    "https://s1.ripple.com:51234/",
+    "https://s2.ripple.com:51234/",
+    "https://xrplcluster.com:51234/"
+]
+
+def parse_response(response: Any) -> Dict[str, Any]:
+    """Extrait le sous-dictionnaire 'result' s'il existe."""
+    if isinstance(response, dict):
+        return response.get("result", response)
+    elif hasattr(response, "result"):
+        r = response.result
+        return r if isinstance(r, dict) else {"result": r}
+    else:
+        return {}
+
+class HybridXRPLClient:
+    """
+    Client hybride XRPL utilisant principalement WebSocket de manière asynchrone,
+    avec un fallback HTTP via JsonRpcClient.
+    """
+    def __init__(self, ws_url: str, http_url: str):
+        self.ws_url = ws_url
+        self.http_url = http_url
+        self.ws: Optional[websockets.WebSocketClientProtocol] = None
+        self.json_client = JsonRpcClient(http_url)
+        self.connected = False
+        self.request_id = 0
+        self.pending_requests: Dict[int, asyncio.Future] = {}
+        self.logger = logger
+        self.loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._start_loop, daemon=True)
+        self._thread.start()
+
+    def _start_loop(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+    def _get_request_id(self) -> int:
+        self.request_id += 1
+        return self.request_id
+
+    async def connect(self):
+        try:
+            self.ws = await websockets.connect(self.ws_url)
+            self.connected = True
+            asyncio.create_task(self._handle_messages())
+            self.logger.info(f"Connected to WebSocket at {self.ws_url}")
+        except Exception as e:
+            self.logger.error(f"WebSocket connection failed: {e}")
+            self.connected = False
+
+    async def _handle_messages(self):
+        try:
+            while self.connected and self.ws:
+                message = await self.ws.recv()
+                data = json.loads(message)
+                data = parse_response(data)
+                if "id" in data:
+                    req_id = data["id"]
+                    if req_id in self.pending_requests:
+                        fut = self.pending_requests.pop(req_id)
+                        fut.set_result(data)
+                # d'autres traitements éventuels ...
+        except Exception as e:
+            self.logger.error(f"Error in _handle_messages: {e}")
+            self.connected = False
+            await self.reconnect()
+
+    async def reconnect(self):
+        self.connected = False
+        if self.ws:
+            await self.ws.close()
+        retry = 0
+        max_retry = 5
+        while not self.connected and retry < max_retry:
+            try:
+                self.logger.info("Retrying connection...")
+                await self.connect()
+                if self.connected:
+                    break
+            except Exception as e:
+                self.logger.error(f"Reconnection attempt failed: {e}")
+            retry += 1
+            await asyncio.sleep(2 ** retry)
+
+    async def _send_ws_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.connected:
+            await self.connect()
+        req_id = self._get_request_id()
+        request["id"] = req_id
+        fut = self.loop.create_future()
+        self.pending_requests[req_id] = fut
+        await self.ws.send(json.dumps(request))
+        try:
+            response = await asyncio.wait_for(fut, timeout=10.0)
+            return response
+        except asyncio.TimeoutError:
+            self.pending_requests.pop(req_id, None)
+            raise TimeoutError("Request timed out")
+
+    def sync_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._send_ws_request(request), self.loop)
+            return future.result(timeout=10)
+        except Exception as e:
+            self.logger.error(f"Error in sync_request: {e} -- Using HTTP fallback")
+            return self.json_client.request(request)
+
+
+
+"""
+Partie 2 : Définition des classes QuantumProcessor et XRPLForensicMonitor
+
+Ces classes simulent respectivement un processeur quantique et le module
+forensic destiné à analyser les transactions XRPL.
+"""
+
+class QuantumProcessor:
+    def __init__(self, n_qubits=8, mode="hybrid"):
+        self.n_qubits = n_qubits
+        self.mode = mode
+
+    def create_quantum_circuit(self, circuit_type="superposition", params: Optional[Dict[str, Any]] = None) -> QuantumCircuit:
+        qc = QuantumCircuit(self.n_qubits)
+        if circuit_type == "superposition":
+            for i in range(self.n_qubits):
+                qc.h(i)
+        elif circuit_type == "entanglement":
+            qc.h(0)
+            for i in range(1, self.n_qubits):
+                qc.cx(0, i)
+        else:
+            qc.h(0)
+        qc.measure_all()
+        return qc
+
+    def execute_quantum_operation(self, op_type="measurement", params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return {"result": f"Operation '{op_type}' executed with parameters {params}"}
+
+    def measure_quantum_state(self) -> Dict[str, float]:
+        return {"0" * self.n_qubits: 1.0}
+
+    def get_resource_usage(self) -> str:
+        return f"Simulated (Mode: {self.mode}, Qubits: {self.n_qubits})"
+
+class XRPLForensicMonitor:
+    def __init__(self, hybrid_client: Optional[HybridXRPLClient] = None):
+        self.client = hybrid_client
+        self.transaction_history: Dict[str, List[tuple]] = {}
+        self.suspicious_activities: List[Dict[str, Any]] = []
+        self.high_volume_accounts: List[Dict[str, Any]] = []
+        # Ici, grâce à l'import de networkx as nx dans la Partie 1,
+        # nous pouvons utiliser nx.Graph() sans problème.
+        self.network_graph = nx.Graph()
+
+    async def analyze_transaction(self, tx: Dict[str, Any]):
+        account = tx.get("Account", "unknown")
+        try:
+            amount = float(tx.get("Amount", 0)) / 1000000
+        except Exception:
+            amount = 0
+        ts = time.time()
+        self.transaction_history.setdefault(account, []).append((ts, amount))
+        self.update_network_graph(account, tx.get("Destination", None), amount)
+        if self.detect_high_frequency_trading(account):
+            self.suspicious_activities.append({
+                "type": "HIGH FREQUENCY TRADING",
+                "account": account,
+                "timestamp": ts
+            })
+        if amount > 100000:
+            self.suspicious_activities.append({
+                "type": "HIGH VALUE TRANSACTION",
+                "account": account,
+                "amount": amount,
+                "timestamp": ts
+            })
+        self.update_high_volume_accounts()
+
+    def detect_high_frequency_trading(self, account: str) -> bool:
+        transactions = self.transaction_history.get(account, [])
+        recent = [t for t, _ in transactions if time.time() - t < 60]
+        return len(recent) > 10
+
+    def update_high_volume_accounts(self):
+        self.high_volume_accounts = []
+        for account, transactions in self.transaction_history.items():
+            total = sum(amount for _, amount in transactions)
+            if total > 1000000:
+                self.high_volume_accounts.append({"account": account, "volume": total})
+
+    def update_network_graph(self, source: str, dest: Optional[str], amount: float):
+        if source and dest:
+            self.network_graph.add_edge(source, dest, weight=amount)
+
+    def get_forensic_report(self) -> Dict[str, Any]:
+        return {
+            "timestamp": time.time(),
+            "suspicious_activities": self.suspicious_activities,
+            "high_volume_accounts": self.high_volume_accounts,
+            "network_graph": self.network_graph
+        }
+
+    def generate_address_report(self, address: str) -> str:
+        transactions = self.transaction_history.get(address, [])
+        if not transactions:
+            return f"No transactions found for address {address}."
+        total = sum(amount for _, amount in transactions)
+        count = len(transactions)
+        report = f"Report for {address}:\n- Transactions: {count}\n- Total Volume: {total:.2f} XRP\n"
+        suspicious = [act for act in self.suspicious_activities if act.get("account") == address]
+        if suspicious:
+            report += "- Suspicious Activities:\n"
+            for act in suspicious:
+                ts = datetime.fromtimestamp(act.get("timestamp", time.time())).strftime("%Y-%m-%d %H:%M:%S")
+                report += f"   * {act.get('type')} at {ts}\n"
+        else:
+            report += "- No suspicious activities detected.\n"
+        return report
+
+    def forensic_ai_response(self, question: str) -> str:
+        responses = [
+            "Based on my forensic analysis, the activity appears normal.",
+            "There are some anomalies – check the transaction frequency.",
+            "Certain addresses show signs of suspicious behavior.",
+            "Recent transactions indicate possible manipulation.",
+            "The transaction volumes are average for this segment."
+        ]
+        return random.choice(responses) + f" (Question: {question})"
+
+
+
+
+
+from itertools import cycle
+from xrpl.wallet import Wallet
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+from cryptography.fernet import Fernet
+import os, base64
+
+class MatrixEscape:
+    def __init__(self, offline_mode: bool = True):
+        self.endpoint_cycle = cycle(JSON_RPC_URLS)
+        self.ws_endpoint_cycle = cycle(WEBSOCKET_URLS)
+        self.current_http = next(self.endpoint_cycle)
+        self.current_ws = next(self.ws_endpoint_cycle)
+        self.offline_mode = offline_mode
+        self.connection_status = False
+        self.connection_info = {"info": {"server_state": "OFFLINE MODE", "build_version": "LOCAL"}}
+        self.connection_latency = 0
+        self.ledger_info = {"ledger_current_index": "OFFLINE"}
+        self.failed_connections = 0
+
+        if not self.offline_mode:
+            self.hybrid_client = HybridXRPLClient(self.current_ws, self.current_http)
+            future = asyncio.run_coroutine_threadsafe(self.hybrid_client.connect(), self.hybrid_client.loop)
+            try:
+                future.result(timeout=5)
+            except Exception as e:
+                logger.error(f"Initial WS connection error: {e}")
+            self.monitoring_thread_running = True
+            self.monitoring_thread = threading.Thread(target=self.background_monitoring, daemon=True)
+            self.monitoring_thread.start()
+        else:
+            self.hybrid_client = None
+            self.monitoring_thread_running = False
+
+    def set_offline_mode(self, offline: bool):
+        if offline == self.offline_mode:
+            return
+        self.offline_mode = offline
+        if offline:
+            self.connection_status = False
+            self.connection_info = {"info": {"server_state": "OFFLINE MODE", "build_version": "LOCAL"}}
+            self.ledger_info = {"ledger_current_index": "OFFLINE"}
+        else:
+            if self.hybrid_client is None:
+                self.hybrid_client = HybridXRPLClient(self.current_ws, self.current_http)
+            def connect_async():
+                future = asyncio.run_coroutine_threadsafe(self.hybrid_client.connect(), self.hybrid_client.loop)
+                try:
+                    future.result(timeout=5)
+                except Exception as e:
+                    logger.error(f"Connection error when switching to online mode: {e}")
+                self.monitoring_thread_running = True
+                self.monitoring_thread = threading.Thread(target=self.background_monitoring, daemon=True)
+                self.monitoring_thread.start()
+            threading.Thread(target=connect_async, daemon=True).start()
+
+    def check_connection(self):
+        if self.offline_mode:
+            return False, {"error": "OFFLINE MODE ENABLED", "endpoint": "LOCAL"}
+        try:
+            start_time = time.time()
+            response = self.hybrid_client.sync_request({
+                "method": "server_info",
+                "params": [{}]
+            })
+            result = parse_response(response)
+            latency = round((time.time() - start_time) * 1000)
+            result['latency'] = latency
+            result['endpoint'] = self.current_http
+            self.connection_status = True
+            self.connection_info = result
+            self.connection_latency = latency
+            try:
+                ledger_response = self.hybrid_client.sync_request({
+                    "method": "ledger_current",
+                    "params": [{}]
+                })
+                self.ledger_info = parse_response(ledger_response)
+            except Exception as e:
+                logger.error(f"Error getting ledger info: {e}")
+            return True, result
+        except Exception as e:
+            logger.error(f"XRPL connection error: {str(e)}")
+            self.connection_status = False
+            self.connection_info = {"error": str(e), "endpoint": self.current_http}
+            return False, self.connection_info
+
+    def background_monitoring(self):
+        while self.monitoring_thread_running:
+            try:
+                status, _ = self.check_connection()
+                if not status:
+                    self.failed_connections += 1
+                    if self.failed_connections >= 3:
+                        self.switch_endpoint()
+                else:
+                    self.failed_connections = 0
+                time.sleep(2)
+            except Exception as e:
+                logger.error(f"Monitoring thread error: {e}")
+                self.failed_connections += 1
+                if self.failed_connections >= 3:
+                    self.switch_endpoint()
+                time.sleep(5)
+
+    def switch_endpoint(self):
+        self.current_http = next(self.endpoint_cycle)
+        self.current_ws = next(self.ws_endpoint_cycle)
+        logger.info(f"Switching endpoints: HTTP: {self.current_http}, WS: {self.current_ws}")
+        self.hybrid_client = HybridXRPLClient(self.current_ws, self.current_http)
+        future = asyncio.run_coroutine_threadsafe(self.hybrid_client.connect(), self.hybrid_client.loop)
+        try:
+            future.result(timeout=10)
+        except Exception as e:
+            logger.error(f"Error connecting to new endpoint: {e}")
+        self.failed_connections = 0
+
+class NetworkAnimation:
+    def __init__(self, canvas, width, height):
+        self.canvas = canvas
+        self.width = width
+        self.height = height
+        self.node_count = 15
+        self.nodes = []
+        self.connection_distance = 150
+        self.speed = 1
+        for _ in range(self.node_count):
+            node = {
+                'x': random.randint(0, self.width),
+                'y': random.randint(0, self.height),
+                'dx': random.choice([-1, 1]) * self.speed,
+                'dy': random.choice([-1, 1]) * self.speed,
+                'size': random.randint(2, 4),
+                'active': random.choice([True, False])
+            }
+            self.nodes.append(node)
+            
+    def update(self):
+        self.canvas.delete("all")
+        for node in self.nodes:
+            node['x'] += node['dx']
+            node['y'] += node['dy']
+            if node['x'] < 0 or node['x'] > self.width:
+                node['dx'] *= -1
+            if node['y'] < 0 or node['y'] > self.height:
+                node['dy'] *= -1
+            if random.random() < 0.01:
+                node['active'] = not node['active']
+            color = "#00FF00" if node['active'] else "#003300"
+            self.canvas.create_oval(
+                node['x'] - node['size'],
+                node['y'] - node['size'],
+                node['x'] + node['size'],
+                node['y'] + node['size'],
+                fill=color, outline=color
+            )
+        self.canvas.after(50, self.update)
+
+class DoorWallet:
+    def __init__(self, escape_manager: MatrixEscape):
+        self.escape_manager = escape_manager
+
+    def create_door(self):
+        wallet = Wallet.create()
+        return {
+            'address': wallet.classic_address,
+            'public_key': wallet.public_key,
+            'private_key': wallet.private_key,
+            'seed': wallet.seed,
+            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+    def recover_door(self, seed: str):
+        try:
+            wallet = Wallet(seed=seed)
+            return {'address': wallet.classic_address, 'seed': seed}
+        except Exception as e:
+            raise Exception(f"Invalid seed: {str(e)}")
+
+class GlobeAnimation:
+    def __init__(self, canvas, width, height):
+        self.canvas = canvas
+        self.width = width
+        self.height = height
+        self.rotation = 0
+        self.num_markers = 12
+        self.center_x = width // 2
+        self.center_y = height // 2
+        self.radius = int(min(width, height) * 0.3)
+
+    def update(self):
+        self.canvas.delete("all")
+        self.canvas.create_oval(
+            self.center_x - self.radius, self.center_y - self.radius,
+            self.center_x + self.radius, self.center_y + self.radius,
+            outline="#00FF00", width=2
+        )
+        for i in range(self.num_markers):
+            angle = 2 * math.pi * i / self.num_markers + self.rotation
+            x = self.center_x + self.radius * math.cos(angle)
+            y = self.center_y + self.radius * math.sin(angle)
+            digit = str((i + int(self.rotation * 10)) % 10)
+            self.canvas.create_text(x, y, text=digit, fill="#00FF00", font=("Courier", 14, "bold"))
+        self.rotation += 0.02
+        self.canvas.after(50, self.update)
+
+
+
+
+
+class QuantumGUI(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Quantum Neural Processor Dashboard")
+        self.geometry("1200x800")
+        self.configure(bg="white")
+        # Création du processeur quantique simulé
+        self.processor = QuantumProcessor(n_qubits=8, mode="hybrid")
+        self.current_circuit: Optional[QuantumCircuit] = None
+        self.mode_var = tk.StringVar(value="hybrid")
+        # Démarrage en mode OFFLINE par défaut via MatrixEscape
+        self.escape_manager = MatrixEscape(offline_mode=True)
+        # Pour le module forensic, on utilise le client online si disponible ; sinon, simulation.
+        self.forensic_monitor = XRPLForensicMonitor(self.escape_manager.hybrid_client)
+        self.show_splash_animation()
+
+    def show_splash_animation(self):
+        self.splash_canvas = tk.Canvas(self, bg="white", highlightthickness=0)
+        self.splash_canvas.pack(fill="both", expand=True)
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        self.start_time = time.time()
+        self.base_scale = 50
+        self.amplitude = 3
+        self.splash_text = self.splash_canvas.create_text(w//2, h//2, text="0",
+                                                            font=("Helvetica", self.base_scale, "normal"),
+                                                            fill="black")
+        self.animate_splash()
+        self.after(3000, self.destroy_splash)
+
+    def animate_splash(self):
+        if not self.splash_canvas.winfo_exists():
+            return
+        elapsed = time.time() - self.start_time
+        scale = self.base_scale + self.amplitude * math.sin(2 * math.pi * elapsed / 2.0)
+        try:
+            self.splash_canvas.itemconfig(self.splash_text, font=("Helvetica", int(scale), "normal"))
+        except tk.TclError:
+            return
+        self.after(50, self.animate_splash)
+
+    def destroy_splash(self):
+        self.splash_canvas.destroy()
+        self.initialize_main_interface()
+
+    def initialize_main_interface(self):
+        self.configure(bg="white")
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("TFrame", background="white")
+        style.configure("TLabel", background="white", font=("Helvetica", 12))
+        style.configure("TButton", font=("Helvetica", 10), padding=6)
+        main_frame = ttk.Frame(self, padding="20")
+        main_frame.pack(fill="both", expand=True)
+        header = ttk.Label(main_frame, text="Quantum Neural Processor Dashboard", font=("Helvetica", 18, "bold"))
+        header.pack(pady=10)
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.pack(fill="both", expand=True, pady=10)
+
+        # Création des onglets
+        self.operations_tab = ttk.Frame(self.notebook)
+        self.results_tab = ttk.Frame(self.notebook)
+        self.monitoring_tab = ttk.Frame(self.notebook)
+        self.circuit_tab = ttk.Frame(self.notebook)
+        self.cli_tab = ttk.Frame(self.notebook)
+        self.qa_tab = ttk.Frame(self.notebook)
+        self.forensic_tab = tk.Frame(self.notebook, bg="black")
+        self.notebook.add(self.operations_tab, text="Operations")
+        self.notebook.add(self.results_tab, text="Results")
+        self.notebook.add(self.monitoring_tab, text="Monitoring")
+        self.notebook.add(self.circuit_tab, text="Circuit Visualization")
+        self.notebook.add(self.cli_tab, text="CLI")
+        self.notebook.add(self.qa_tab, text="Q&A")
+        self.notebook.add(self.forensic_tab, text="Forensic")
+
+        self.setup_operations_tab()
+        self.setup_results_tab()
+        self.setup_monitoring_tab()
+        self.setup_circuit_tab()
+        self.setup_cli_tab()
+        self.setup_qa_tab()
+        self.setup_forensic_tab()
+
+    def setup_operations_tab(self):
+        ttk.Label(self.operations_tab, text="Operations functionalities will be here.", font=("Helvetica", 14)).pack(pady=20)
+
+    def setup_results_tab(self):
+        ttk.Label(self.results_tab, text="Results will be shown here.", font=("Helvetica", 14)).pack(pady=20)
+
+    def setup_monitoring_tab(self):
+        self.monitor_text = tk.Text(self.monitoring_tab, height=10, font=("Helvetica", 12))
+        self.monitor_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.update_monitoring()
+
+    def setup_circuit_tab(self):
+        self.circuit_canvas = tk.Canvas(self.circuit_tab, bg="white")
+        self.circuit_canvas.pack(fill="both", expand=True)
+        self.draw_placeholder_circuit()
+
+    def draw_placeholder_circuit(self):
+        self.circuit_canvas.create_rectangle(50, 50, 300, 200, outline="black", width=2)
+        self.circuit_canvas.create_text(175, 125, text="Quantum Circuit Placeholder", font=("Helvetica", 12, "italic"), fill="black")
+
+    def setup_cli_tab(self):
+        frame = self.cli_tab
+        init_frame = ttk.LabelFrame(frame, text="Initialization", padding=10)
+        init_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Label(init_frame, text="n_qubits:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.init_n_qubits = ttk.Entry(init_frame, width=10)
+        self.init_n_qubits.insert(0, "8")
+        self.init_n_qubits.grid(row=0, column=1, padx=5, pady=2)
+        ttk.Label(init_frame, text="mode:").grid(row=0, column=2, sticky="e", padx=5, pady=2)
+        self.init_mode = ttk.Entry(init_frame, width=10)
+        self.init_mode.insert(0, "hybrid")
+        self.init_mode.grid(row=0, column=3, padx=5, pady=2)
+        ttk.Button(init_frame, text="Init", command=self.cli_init).grid(row=0, column=4, padx=5, pady=2)
+        status_frame = ttk.LabelFrame(frame, text="System Status", padding=10)
+        status_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Button(status_frame, text="Show Status", command=self.cli_status).pack(side="left", padx=5)
+        circuit_frame = ttk.LabelFrame(frame, text="Create Circuit", padding=10)
+        circuit_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Label(circuit_frame, text="Type (e.g., superposition, entanglement):").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.circuit_type_entry = ttk.Entry(circuit_frame, width=20)
+        self.circuit_type_entry.insert(0, "superposition")
+        self.circuit_type_entry.grid(row=0, column=1, padx=5, pady=2)
+        ttk.Label(circuit_frame, text="Parameters (key=value ...):").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.circuit_params_entry = ttk.Entry(circuit_frame, width=40)
+        self.circuit_params_entry.grid(row=1, column=1, padx=5, pady=2)
+        ttk.Button(circuit_frame, text="Create Circuit", command=self.cli_circuit).grid(row=0, column=2, rowspan=2, padx=5, pady=2)
+        run_frame = ttk.LabelFrame(frame, text="Execute Operation", padding=10)
+        run_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Label(run_frame, text="Operation (e.g., measurement, algorithm):").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.run_op_entry = ttk.Entry(run_frame, width=20)
+        self.run_op_entry.insert(0, "measurement")
+        self.run_op_entry.grid(row=0, column=1, padx=5, pady=2)
+        ttk.Label(run_frame, text="Parameters (key=value ...):").grid(row=1, column=0, sticky="e", padx=5, pady=2)
+        self.run_params_entry = ttk.Entry(run_frame, width=40)
+        self.run_params_entry.grid(row=1, column=1, padx=5, pady=2)
+        ttk.Button(run_frame, text="Execute", command=self.cli_run).grid(row=0, column=2, rowspan=2, padx=5, pady=2)
+        measure_frame = ttk.LabelFrame(frame, text="Measure Quantum State", padding=10)
+        measure_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Button(measure_frame, text="Measure", command=self.cli_measure).pack(side="left", padx=5)
+        ask_frame = ttk.LabelFrame(frame, text="Ask Hybrid AI", padding=10)
+        ask_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Label(ask_frame, text="Question:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.ask_entry = ttk.Entry(ask_frame, width=40)
+        self.ask_entry.grid(row=0, column=1, padx=5, pady=2)
+        ttk.Button(ask_frame, text="Ask", command=self.cli_ask).grid(row=0, column=2, padx=5, pady=2)
+        quit_frame = ttk.Frame(frame, padding=10)
+        quit_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Button(quit_frame, text="Exit CLI", command=self.cli_quit).pack(side="right", padx=5)
+        console_frame = ttk.LabelFrame(frame, text="CLI Output", padding=10)
+        console_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.cli_output = tk.Text(console_frame, height=10, font=("Helvetica", 10))
+        self.cli_output.pack(fill="both", expand=True)
+
+    def setup_qa_tab(self):
+        frame = self.qa_tab
+        self.qa_output = tk.Text(frame, height=15, font=("Helvetica", 10))
+        self.qa_output.pack(fill="both", expand=True, padx=10, pady=10)
+        input_frame = ttk.Frame(frame)
+        input_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Label(input_frame, text="Your question:").pack(side="left", padx=5)
+        self.qa_entry = ttk.Entry(input_frame, width=60)
+        self.qa_entry.pack(side="left", padx=5)
+        ttk.Button(input_frame, text="Send", command=self.qa_ask).pack(side="left", padx=5)
+
+    def setup_forensic_tab(self):
+        self.forensic_tab.configure(bg="black")
+        header = tk.Label(self.forensic_tab, text="XRPL Forensic Analysis", font=("Courier", 16, "bold"),
+                          bg="black", fg="white")
+        header.pack(pady=10)
+        test_btn = tk.Button(self.forensic_tab, text="Test XRPL Network", font=("Courier", 12),
+                             bg="black", fg="white", activebackground="gray", command=self.test_xrpl_network)
+        test_btn.pack(pady=5)
+        list_frame = tk.Frame(self.forensic_tab, bg="black")
+        list_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(list_frame, text="Suspicious Activities:", font=("Courier", 12),
+                 bg="black", fg="white").pack(anchor="w")
+        self.suspicious_list = tk.Listbox(list_frame, height=6, font=("Courier", 10),
+                                          bg="black", fg="white", selectbackground="gray")
+        self.suspicious_list.pack(fill="x", pady=5)
+        tk.Label(list_frame, text="High Volume Accounts:", font=("Courier", 12),
+                 bg="black", fg="white").pack(anchor="w")
+        self.high_volume_list = tk.Listbox(list_frame, height=6, font=("Courier", 10),
+                                           bg="black", fg="white", selectbackground="gray")
+        self.high_volume_list.pack(fill="x", pady=5)
+        qa_frame = tk.LabelFrame(self.forensic_tab, text="Forensic Q&A", font=("Courier", 12, "bold"),
+                                 bg="black", fg="white", relief="solid", bd=1)
+        qa_frame.pack(fill="x", padx=10, pady=10)
+        tk.Label(qa_frame, text="Your forensic question:", font=("Courier", 12),
+                 bg="black", fg="white").grid(row=0, column=0, sticky="e", padx=5, pady=2)
+        self.forensic_qa_entry = tk.Entry(qa_frame, font=("Courier", 12), bg="black", fg="white",
+                                          insertbackground="white", width=40)
+        self.forensic_qa_entry.grid(row=0, column=1, padx=5, pady=2)
+        tk.Button(qa_frame, text="Ask", font=("Courier", 12), bg="black", fg="white",
+                  command=self.forensic_qa_ask).grid(row=0, column=2, padx=5, pady=2)
+        self.forensic_qa_output = tk.Text(qa_frame, height=4, font=("Courier", 10),
+                                           bg="black", fg="white")
+        self.forensic_qa_output.grid(row=1, column=0, columnspan=3, padx=5, pady=5)
+        graph_frame = tk.Frame(self.forensic_tab, bg="black")
+        graph_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.fig = plt.Figure(figsize=(5, 3), dpi=100, facecolor="black")
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_facecolor("black")
+        self.forensic_canvas = FigureCanvasTkAgg(self.fig, master=graph_frame)
+        self.forensic_canvas.get_tk_widget().pack(fill="both", expand=True)
+        self.refresh_forensic_data()
+
+    def refresh_forensic_data(self):
+        try:
+            req = {"method": "server_info", "params": [{}]}
+            if self.escape_manager.offline_mode:
+                result = {"info": {"server_state": "OFFLINE MODE", "build_version": "LOCAL"}, "latency": 0, "endpoint": "LOCAL"}
+            else:
+                response = self.escape_manager.hybrid_client.sync_request(req)
+                result = parse_response(response)
+            self.suspicious_list.delete(0, tk.END)
+            self.suspicious_list.insert(tk.END, "HIGH FREQUENCY TRADING - rExample1")
+            self.suspicious_list.insert(tk.END, "HIGH VALUE TRANSACTION - rExample2")
+            self.high_volume_list.delete(0, tk.END)
+            self.high_volume_list.insert(tk.END, "rHighVolume1 - 2000000 XRP")
+            self.high_volume_list.insert(tk.END, "rHighVolume2 - 1500000 XRP")
+            G = nx.Graph()
+            nodes = [f"rNode{i}" for i in range(1, 7)]
+            for node in nodes:
+                G.add_node(node)
+            edges = [
+                ("rNode1", "rNode2", {"weight": random.randint(100, 1000)}),
+                ("rNode2", "rNode3", {"weight": random.randint(100, 1000)}),
+                ("rNode3", "rNode4", {"weight": random.randint(100, 1000)}),
+                ("rNode4", "rNode5", {"weight": random.randint(100, 1000)}),
+                ("rNode5", "rNode6", {"weight": random.randint(100, 1000)})
+            ]
+            G.add_edges_from(edges)
+            self.ax.clear()
+            pos = nx.spring_layout(G, seed=42)
+            edge_widths = [max(1, d["weight"] / 500) for _, _, d in G.edges(data=True)]
+            nx.draw_networkx_nodes(G, pos, ax=self.ax, node_color="white", node_size=600)
+            nx.draw_networkx_edges(G, pos, ax=self.ax, edge_color="white", width=edge_widths)
+            nx.draw_networkx_labels(G, pos, ax=self.ax, font_color="white", font_size=9)
+            self.ax.axis("off")
+            self.forensic_canvas.draw()
+        except Exception as e:
+            messagebox.showerror("Forensic Refresh Error", str(e))
+        self.after(5000, self.refresh_forensic_data)
+
+    def test_xrpl_network(self):
+        def _test():
+            try:
+                req = {"method": "server_info", "params": [{}]}
+                response = self.escape_manager.hybrid_client.sync_request(req)
+                info = parse_response(response).get("info", {})
+                build_ver = info.get("build_version", "N/A")
+                state = info.get("server_state", "N/A")
+                msg = f"XRPL Server Info:\nBuild Version: {build_ver}\nServer State: {state}"
+                messagebox.showinfo("XRPL Network", msg)
+            except Exception as ex:
+                messagebox.showerror("XRPL Connection Error", str(ex))
+        threading.Thread(target=_test, daemon=True).start()
+
+    def forensic_qa_ask(self):
+        question = self.forensic_qa_entry.get().strip()
+        if not question:
+            messagebox.showerror("Error", "Please enter a forensic question.")
+            return
+        answer = self.forensic_monitor.forensic_ai_response(question)
+        self.forensic_qa_output.delete("1.0", tk.END)
+        self.forensic_qa_output.insert(tk.END, answer)
+
+    def cli_init(self):
+        try:
+            n_qubits = int(self.init_n_qubits.get())
+            mode = self.init_mode.get()
+            self.processor = QuantumProcessor(n_qubits=n_qubits, mode=mode)
+            self.append_cli_output(f"✓ Quantum processor initialized with {n_qubits} qubits in {mode} mode.")
+        except Exception as e:
+            self.append_cli_output(f"✗ Initialization error: {str(e)}")
+
+    def cli_status(self):
+        status_text = "\nSystem Status:\n----------------\n"
+        if self.processor:
+            status_text += f"Quantum processor: Initialized\n  - Qubits: {self.processor.n_qubits}\n"
+        else:
+            status_text += "Quantum processor: Not initialized\n"
+        self.append_cli_output(status_text)
+
+    def cli_circuit(self):
+        if not self.processor:
+            self.append_cli_output("✗ Error: Please initialize the quantum processor (use Init).")
+            return
+        try:
+            circuit_type = self.circuit_type_entry.get().strip() or "superposition"
+            params_str = self.circuit_params_entry.get().strip()
+            params = self._parse_params(params_str) if params_str else {}
+            circuit = self.processor.create_quantum_circuit(circuit_type, params)
+            self.append_cli_output(f"\nCircuit created of type {circuit_type}:\n------------------------")
+            self.append_cli_output(str(circuit))
+            self.current_circuit = circuit
+            self.update_circuit_visualization()
+        except Exception as e:
+            self.append_cli_output(f"✗ Error creating circuit: {str(e)}")
+
+    def cli_run(self):
+        if not self.processor:
+            self.append_cli_output("✗ Error: Please initialize the quantum processor (use Init).")
+            return
+        try:
+            op_type = self.run_op_entry.get().strip() or "measurement"
+            params_str = self.run_params_entry.get().strip()
+            params = self._parse_params(params_str) if params_str else {}
+            result = self.processor.execute_quantum_operation(op_type, params)
+            self.append_cli_output("\nOperation result:\n------------------------")
+            self.append_cli_output(str(result))
+        except Exception as e:
+            self.append_cli_output(f"✗ Error executing operation: {str(e)}")
+
+    def cli_measure(self):
+        if not self.processor:
+            self.append_cli_output("✗ Error: Please initialize the quantum processor (use Init).")
+            return
+        try:
+            result = self.processor.measure_quantum_state()
+            self.append_cli_output("\nMeasurement result:\n---------------------")
+            for state, prob in result.items():
+                self.append_cli_output(f"|{state}⟩ : {prob:.4f}")
+        except Exception as e:
+            self.append_cli_output(f"✗ Error measuring quantum state: {str(e)}")
+
+    def cli_ask(self):
+        question = self.ask_entry.get().strip()
+        if not question:
+            self.append_cli_output("Please type a question.")
+            return
+        answer = f"Simulated AI response to: {question}"
+        self.append_cli_output("\nQuestion:")
+        self.append_cli_output(question)
+        self.append_cli_output("Answer:")
+        self.append_cli_output(answer)
+
+    def cli_quit(self):
+        self.append_cli_output("Exiting CLI. Clearing output.")
+        self.cli_output.delete("1.0", tk.END)
+
+    def append_cli_output(self, text: str):
+        self.cli_output.insert(tk.END, text + "\n")
+        self.cli_output.see(tk.END)
+
+    def setup_qa_tab(self):
+        frame = self.qa_tab
+        self.qa_output = tk.Text(frame, height=15, font=("Helvetica", 10))
+        self.qa_output.pack(fill="both", expand=True, padx=10, pady=10)
+        input_frame = ttk.Frame(frame)
+        input_frame.pack(fill="x", padx=10, pady=5)
+        ttk.Label(input_frame, text="Your question:").pack(side="left", padx=5)
+        self.qa_entry = ttk.Entry(input_frame, width=60)
+        self.qa_entry.pack(side="left", padx=5)
+        ttk.Button(input_frame, text="Send", command=self.qa_ask).pack(side="left", padx=5)
+
+    def qa_ask(self):
+        question = self.qa_entry.get().strip()
+        if not question:
+            messagebox.showwarning("Warning", "Please type a question.")
+            return
+        self.qa_output.insert(tk.END, f"You: {question}\n")
+        answer = f"Simulated AI response to: {question}"
+        self.qa_output.insert(tk.END, f"AI: {answer}\n\n")
+        self.qa_output.see(tk.END)
+        self.qa_entry.delete(0, tk.END)
+
+    def _parse_params(self, param_str: str) -> dict:
+        params = {}
+        for part in param_str.split():
+            if '=' in part:
+                key, value = part.split('=', 1)
+                try:
+                    params[key] = float(value)
+                except ValueError:
+                    params[key] = value
+        return params
+
+    def update_circuit_visualization(self):
+        if self.current_circuit:
+            try:
+                figure = qiskit_viz.circuit_drawer(self.current_circuit, output='mpl', style={'backgroundcolor': 'white'})
+                if hasattr(self, 'viz_canvas_widget'):
+                    self.viz_canvas_widget.get_tk_widget().destroy()
+                self.viz_canvas_widget = FigureCanvasTkAgg(figure, self.circuit_canvas)
+                self.viz_canvas_widget.draw()
+                self.viz_canvas_widget.get_tk_widget().pack(fill="both", expand=True)
+            except Exception as e:
+                messagebox.showerror("Visualization error", f"Error visualizing the circuit:\n{str(e)}")
+
+    def update_monitoring(self):
+        try:
+            cpu_usage = psutil.cpu_percent(interval=1)
+            mem = psutil.virtual_memory()
+            monitoring_info = (
+                f"CPU Usage: {cpu_usage}%\n"
+                f"Memory Usage: {mem.percent}%\n"
+                f"Available Memory: {(mem.available/(1024*1024)):.2f} MB\n"
+                f"Quantum Processor Mode: {self.processor.mode if self.processor else 'N/A'}\n"
+                f"Number of Qubits: {self.processor.n_qubits if self.processor else 'N/A'}"
+            )
+            self.monitor_text.delete("1.0", tk.END)
+            self.monitor_text.insert(tk.END, monitoring_info)
+        except Exception as e:
+            self.monitor_text.delete("1.0", tk.END)
+            self.monitor_text.insert(tk.END, f"Monitoring Error: {str(e)}")
+        self.after(2000, self.update_monitoring)
+
+    def run(self):
+        self.mainloop()
+
+
+
+
+if __name__ == "__main__":
+    app = QuantumGUI()
+    app.run()

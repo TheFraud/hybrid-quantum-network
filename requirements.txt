@@ -1,0 +1,85 @@
+# Quantum computing and Qiskit related dependencies
+qiskit==1.3.2
+qiskit-aer==0.16.1
+qiskit-algorithms==0.3.1
+qiskit-ibm-runtime==0.34.0
+qiskit-machine-learning==0.8.2
+qiskit-optimization==0.6.1
+pennylane==0.34.0
+
+# XRP Ledger (XRPL) dependencies
+xrpl-py>=2.0.0
+cryptography
+websockets
+
+# Deep learning and scientific computing
+tensorflow==2.18.0
+torch==2.5.1
+numpy==2.0.2
+scipy==1.15.1
+scikit-learn==1.6.1
+
+# Data collection and processing
+pandas==2.2.3
+internetarchive==3.5.0
+arxiv==1.4.2
+PyGithub==2.1.1
+stackapi==0.2.0
+kaggle==1.5.16
+aiohttp==3.9.1
+requests==2.31.0
+
+# API & web framework
+fastapi==0.115.6
+uvicorn==0.34.0
+Flask==3.1.0
+python-multipart==0.0.6
+python-jose==3.3.0
+passlib==1.7.4
+bcrypt==4.0.1
+
+# Visualization
+matplotlib==3.10.0
+seaborn==0.13.2
+plotly==5.18.0
+
+# Development tools
+black==24.10.0
+flake8==7.1.1
+isort==5.13.2
+mypy==1.8.0
+pre-commit==3.5.0
+
+# Testing frameworks
+pytest==8.3.4
+pytest-asyncio==0.23.2
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+hypothesis==6.98.0
+
+# Documentation
+sphinx==7.2.6
+sphinx-rtd-theme==1.3.0
+mkdocs==1.5.3
+
+# Utilities
+pyyaml==6.0.1
+python-dotenv==1.0.0
+rich==13.7.0
+click==8.1.7
+tqdm==4.66.1
+aiofiles==23.2.1
+
+# Memory management and monitoring
+psutil==5.9.8
+redis==5.0.1
+pymongo==4.6.1
+
+# Security
+jwt==1.3.1
+pyOpenSSL==23.3.0
+certifi==2023.11.17
+
+# Parallelism and distributed computing
+ray==2.3.0
+

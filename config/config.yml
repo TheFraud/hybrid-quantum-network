@@ -1,0 +1,136 @@
+# Version and logging configuration
+version: "1.0.0"
+log_level: "INFO"
+
+# Hybrid Network Configuration
+hybrid_config:
+  n_qubits: 4
+  quantum_depth: 3
+  fusion_mode: "attention"
+  quantum_weight: 0.5
+  max_retries: 3
+  timeout: 30
+  mixed_precision: true
+  max_workers: 4
+  batch_size: 32
+  error_threshold: 0.1
+
+# Neural Network Configuration
+neural_config:
+  input_size: 784
+  hidden_size: 256
+  output_size: 10
+  learning_rate: 0.001
+  dropout_rate: 0.2
+  batch_size: 32
+  max_epochs: 100
+  early_stopping_patience: 10
+  optimizer:
+    type: "adam"
+    weight_decay: 1e-5
+    amsgrad: true
+  scheduler:
+    factor: 0.1
+    patience: 5
+    min_lr: 1e-6
+  attention_enabled: true
+  mixed_precision: true
+
+# Quantum Configuration
+quantum_config:
+  num_qubits: 4
+  circuit_depth: 3
+  shots: 1000
+  error_mitigation: true
+  optimization_level: 3
+
+# Data Collection Configuration
+data_collection:
+  search_queries:
+    - "quantum computing"
+    - "neural networks"
+    - "hybrid AI"
+    - "quantum machine learning"
+  batch_size: 32
+  max_items_per_query: 100
+  update_interval: 3600
+
+# Sources Configuration
+sources:
+  internet_archive:
+    enabled: true
+    priority: 1
+    rate_limit: 100
+    auth_required: false
+  github:
+    enabled: true
+    priority: 2
+    rate_limit: 5000
+    auth_required: true
+  stackoverflow:
+    enabled: true
+    priority: 3
+    rate_limit: 300
+    auth_required: true
+  arxiv:
+    enabled: true
+    priority: 4
+    rate_limit: 100
+    auth_required: false
+  ieee:
+    enabled: true
+    priority: 5
+    rate_limit: 100
+    auth_required: true
+  kaggle:
+    enabled: true
+    priority: 6
+    rate_limit: 100
+    auth_required: true
+
+# Security Configuration
+security:
+  max_requests_per_second: 100
+  max_memory_usage: 0.7
+  max_cpu_usage: 0.8
+  enable_authentication: true
+  enable_rate_limiting: true
+  jwt_secret: "your-secret-key"
+  jwt_algorithm: "HS256"
+  access_token_expire_minutes: 30
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8000"
+  ssl_enabled: true
+  ssl_cert_path: "certs/cert.pem"
+  ssl_key_path: "certs/key.pem"
+
+# Memory Management Configuration
+memory:
+  max_cache_size: 1024
+  cleanup_interval: 300
+  persistence_enabled: true
+  storage_path: "data/memory"
+  backup_enabled: true
+  backup_interval: 86400
+
+# Monitoring Configuration
+monitoring:
+  enable_metrics: true
+  log_level: "INFO"
+  metrics_retention_days: 7
+  alert_thresholds:
+    cpu_usage: 80
+    memory_usage: 85
+    error_rate: 0.01
+  prometheus_enabled: true
+  prometheus_port: 9090
+  grafana_enabled: true
+  grafana_port: 3000
+
+# Development Configuration
+development:
+  debug_mode: false
+  verbose_logging: true
+  test_mode: false
+  profile_code: false
