@@ -166,4 +166,17 @@ Support: For questions, issues, or further assistance, please contact: contact@s
 Quantum-Enhanced Security and AI Innovation
 
 
-   
+   And for Support: xrpl address  / xrp / xspectar / xah 
+
+rJi5DFQ3yCDNXKH1CWwssg2eo3qPVug3Ss
+
+
+
+
+gala address / for $gala $music and $film   0x349b4Ca9Fe6F4fA16feDAb9c18f099dd5700cE3b
+
+
+Near address 
+
+5f07f90f2f30a8c17d28dae97ba9f2cf98ba43b64b614df2b9055ad348546fad
+
